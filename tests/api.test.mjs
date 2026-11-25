@@ -257,6 +257,51 @@ test("settings: validated and applied server-side", async () => {
   ok(await admin.put("/api/admin/settings", { commission_percent: 10 }));
 });
 
+test("self sign-up: staff create their own account; admin sign-in is a separate portal", async () => {
+  const cfg = await client().get("/api/auth/config"); assert.equal(cfg.data.signup_mode, "open");
+  const c = client("11.0.0.1");
+  assert.equal((await c.post("/api/auth/register", { full_name: "Lena Cruz", username: "x", password: "Strong-Pass-2026", confirm: "Strong-Pass-2026" })).status, 400, "bad username");
+  assert.equal((await c.post("/api/auth/register", { full_name: "Lena Cruz", username: "lena", password: "short", confirm: "short" })).status, 400, "weak password");
+  assert.equal((await c.post("/api/auth/register", { full_name: "Lena Cruz", username: "lena", password: "Strong-Pass-2026", confirm: "different" })).status, 400, "mismatch");
+  assert.equal((await c.post("/api/auth/register", { full_name: "Lena Cruz", username: "admin", password: "Strong-Pass-2026", confirm: "Strong-Pass-2026" })).status, 409, "cannot take admin username");
+  const r = await c.post("/api/auth/register", { full_name: "Lena Cruz", username: "lena", password: "Strong-Pass-2026", confirm: "Strong-Pass-2026", position: "Sales", role: "superadmin" });
+  ok(r); assert.equal(r.data.user.role, "staff", "role cannot be chosen"); assert.match(r.data.user.staff_code, /^BG-\d{4}$/);
+  ok(await c.get("/api/me/dashboard"));
+  assert.equal((await c.get("/api/admin/staff")).status, 403);
+  assert.equal((await client("11.0.0.2").post("/api/auth/register", { full_name: "Dup", username: "LENA", password: "Strong-Pass-2026", confirm: "Strong-Pass-2026" })).status, 409, "username unique (case-insensitive)");
+  // admin was notified, and sees the account
+  assert.ok((await admin.get("/api/notifications")).data.notifications.some((n) => n.type === "signup"));
+  assert.ok((await admin.get("/api/admin/staff")).data.staff.some((u) => u.username === "lena"));
+  // portals
+  const sp = client("11.0.0.3");
+  assert.equal((await sp.post("/api/auth/login", { username: "admin", password: "Owner-Pass-2026", portal: "staff" })).status, 401, "admin cannot sign in on staff page");
+  assert.equal((await sp.post("/api/auth/login", { username: "lena", password: "Strong-Pass-2026", portal: "admin" })).status, 401, "staff cannot sign in on admin page");
+  ok(await sp.post("/api/auth/login", { username: "lena", password: "Strong-Pass-2026", portal: "staff" }));
+  ok(await client("11.0.0.4").post("/api/auth/login", { username: "admin", password: "Owner-Pass-2026", portal: "admin" }));
+});
+
+test("sign-up modes: approval required, closed, and IP rate limit", async () => {
+  ok(await admin.put("/api/admin/settings", { signup_mode: "approval" }));
+  const c = client("12.0.0.1");
+  const r = await c.post("/api/auth/register", { full_name: "Pia Dela Cruz", username: "pia", password: "Strong-Pass-2026", confirm: "Strong-Pass-2026" });
+  ok(r); assert.equal(r.data.pending, true);
+  assert.equal((await c.get("/api/me/dashboard")).status, 401, "no session while pending");
+  const l = await client("12.0.0.2").post("/api/auth/login", { username: "pia", password: "Strong-Pass-2026", portal: "staff" });
+  assert.equal(l.status, 403); assert.match(l.data.error, /approval/);
+  assert.ok((await admin.get("/api/admin/overview")).data.counts.pending_signups >= 1);
+  const pia = (await admin.get("/api/admin/staff")).data.staff.find((u) => u.username === "pia"); assert.equal(pia.status, "pending");
+  assert.equal((await alice.post(`/api/admin/staff/${pia.id}/approve`)).status, 403, "staff cannot approve");
+  ok(await admin.post(`/api/admin/staff/${pia.id}/approve`));
+  assert.equal((await admin.post(`/api/admin/staff/${pia.id}/approve`)).status, 400, "only pending can be approved");
+  ok(await client("12.0.0.3").post("/api/auth/login", { username: "pia", password: "Strong-Pass-2026", portal: "staff" }));
+  ok(await admin.put("/api/admin/settings", { signup_mode: "closed" }));
+  assert.equal((await client("12.0.0.4").post("/api/auth/register", { full_name: "Late Comer", username: "late", password: "Strong-Pass-2026", confirm: "Strong-Pass-2026" })).status, 403);
+  assert.equal((await admin.put("/api/admin/settings", { signup_mode: "anything" })).status, 400);
+  ok(await admin.put("/api/admin/settings", { signup_mode: "open" }));
+  let last; for (let i = 0; i < 6; i++) last = await client("12.0.0.9").post("/api/auth/register", { full_name: "Bot " + i, username: "bot" + i, password: "Strong-Pass-2026", confirm: "Strong-Pass-2026" }, { ip: "12.0.0.9" });
+  assert.equal(last.status, 429, "sign-ups rate-limited per IP");
+});
+
 test("2FA: setup, enforce on login, recovery code", async () => {
   const s = await admin.post("/api/auth/2fa/setup"); ok(s);
   assert.equal((await admin.post("/api/auth/2fa/enable", { code: "000000" })).status, 400);

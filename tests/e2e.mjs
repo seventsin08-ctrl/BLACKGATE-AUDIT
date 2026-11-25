@@ -12,7 +12,7 @@ async function ctx(width = 1280, height = 800) {
   return { c, p };
 }
 async function login(p, user, pw, newPw) {
-  await p.goto(BASE + "/"); await p.fill("#u", user); await p.fill("#p", pw); await p.click("button[type=submit]");
+  await p.goto(BASE + (user === "admin" ? "/admin/" : "/")); await p.fill("input[autocomplete=username]", user); await p.fill("input[autocomplete=current-password]", pw); await p.click("button[type=submit]");
   if (newPw) { await p.waitForSelector("text=Set a new password"); const f = await p.$$("form input[type=password]"); await f[f.length - 2].fill(newPw); await f[f.length - 1].fill(newPw); await p.click("text=Save and continue"); }
   await p.waitForURL(/\/(admin|app)\//);
 }
@@ -20,8 +20,8 @@ const api = (p, method, path, body) => p.evaluate(async ([m, u, b]) => { const r
 
 // ---------- admin ----------
 let { c: ac, p: admin } = await ctx();
-await admin.goto(BASE + "/");
-await admin.fill("#u", "admin"); await admin.fill("#p", "wrong-password"); await admin.click("button[type=submit]");
+await admin.goto(BASE + "/admin/"); await admin.waitForSelector("text=Administrator sign-in"); check(await admin.isVisible("text=Administrator sign-in"), "admin has its own sign-in page"); check(!(await admin.isVisible("text=Create a staff account")), "admin page has no sign-up");
+await admin.fill("input[autocomplete=username]", "admin"); await admin.fill("input[autocomplete=current-password]", "wrong-password"); await admin.click("button[type=submit]");
 await admin.waitForSelector(".err:not(:empty)"); check(true, "wrong password shows error");
 await login(admin, "admin", "Temp-Pass-1", "Owner-Secure-2026");
 check(admin.url().includes("/admin/"), "admin lands on /admin/");
@@ -41,7 +41,8 @@ await login(staff, "maria", temp, "Strong-Staff-2026");
 check(staff.url().includes("/app/"), "staff lands on /app/");
 await staff.waitForSelector(".stat");
 check((await api(staff, "GET", "/api/admin/staff")).status === 403, "staff blocked from admin API");
-await staff.goto(BASE + "/admin/"); await staff.waitForURL(/\/app\//); check(true, "staff redirected away from /admin/");
+await staff.goto(BASE + "/admin/"); await staff.waitForSelector("text=Administrator sign-in"); check(!(await staff.isVisible("#view")), "staff session sees only the admin sign-in page at /admin/");
+await staff.goto(BASE + "/app/"); await staff.waitForSelector(".stat");
 // seed realistic data via the same API the UI uses
 const pl = await api(staff, "POST", "/api/me/platforms", { kind: "Facebook", name: "Facebook Page", profile_name: "Maria Studio", profile_url: "https://facebook.com/maria" });
 await api(staff, "POST", "/api/me/platforms", { kind: "Instagram", name: "Instagram", profile_name: "@maria" });
@@ -74,6 +75,16 @@ for (const id of ["tasks", "posts"]) { await staff.goto(`${BASE}/app/#/${id}`); 
 await staff.goto(BASE + "/app/#/tasks"); await staff.waitForSelector(".task"); await staff.click(".task >> nth=0"); await staff.waitForSelector(".modal"); await staff.screenshot({ path: SHOTS + "/staff-task-modal.png" }); await staff.keyboard.press("Escape");
 await staff.goto(BASE + "/app/#/earnings"); await staff.waitForSelector(".stat"); await staff.waitForTimeout(700); await staff.screenshot({ path: SHOTS + "/staff-earnings.png", fullPage: true });
 
+// ---------- self sign-up + portal separation ----------
+{ const { c, p } = await ctx(); await p.goto(BASE + "/");
+  await p.fill("input[autocomplete=username]", "admin"); await p.fill("input[autocomplete=current-password]", "Owner-Secure-2026"); await p.click("button[type=submit]");
+  await p.waitForSelector(".err:not(:empty)"); check((await p.textContent(".err")).includes("Invalid"), "admin credentials rejected on the staff page");
+  await p.click("text=Create a staff account"); await p.waitForSelector("text=Create your account");
+  const ins = await p.$$("form input"); await ins[0].fill("Lena Cruz"); await ins[1].fill("lena"); await ins[2].fill("Sales"); await ins[3].fill("Sturdy-Pass-2026"); await ins[4].fill("Sturdy-Pass-2026");
+  await p.click("button:has-text('Create account')"); await p.waitForURL(/\/app\//); await p.waitForSelector(".stat"); check(true, "staff can create their own account and land in /app/");
+  check((await p.textContent("#view")).includes("Lena"), "new staff sees their own dashboard"); await c.close(); }
+{ const { c, p } = await ctx(); await p.goto(BASE + "/admin/"); await p.fill("input[autocomplete=username]", "maria"); await p.fill("input[autocomplete=current-password]", "Strong-Staff-2026"); await p.click("button[type=submit]");
+  await p.waitForSelector(".err:not(:empty)"); check((await p.textContent(".err")).includes("Invalid"), "staff credentials rejected on the admin page"); await c.close(); }
 // ---------- admin work ----------
 for (const id of ADMIN_ROUTES) await visit(admin, "/admin/", id, "admin");
 await admin.goto(BASE + "/admin/#/payments"); await admin.waitForSelector("button:has-text('Verify')"); await admin.screenshot({ path: SHOTS + "/admin-payments.png" });

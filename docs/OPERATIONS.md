@@ -2,7 +2,10 @@
 
 ## Accounts & access
 * Exactly **one** Superadmin exists (enforced by a unique database index). There is no hidden account, backdoor or undocumented access method.
-* Only the Superadmin can create staff accounts (Staff Management). A temporary password is shown once and must be changed at first login.
+* Staff can create their own account on the main sign-in page (`/`). They choose their own password; the role is always `staff` and can never be chosen by the client. The Superadmin can also create accounts (Staff Management), which use a one-time temporary password.
+* **Sign-up mode** (Settings → Staff sign-up): *Open* (active immediately, default), *Approval* (new accounts wait in **pending** until you click *Approve account* in the staff profile), or *Closed* (only you can create accounts). Sign-ups are limited to 5 per IP per hour and notify the Superadmin. Use *Approval* if the site URL is shared publicly.
+* Only the Superadmin can grant administrative privileges. There is exactly one Superadmin and no way to become one via sign-up.
+* Separate portals: the administrator signs in at `/admin/`; staff at `/`. Credentials for one portal are rejected on the other.
 * Staff cannot reach `/api/admin/*`; the Superadmin cannot use `/api/me/*` staff workspace data.
 * Passwords: scrypt (N=16384) with per-user salt. Min 10 chars, letters + numbers, must not contain the username. Never returned by any endpoint, never shown to the Superadmin.
 * Sessions: random 256-bit token, stored hashed, `HttpOnly; Secure; SameSite=Strict` cookie. Default idle timeout 120 min, absolute 12 h (Settings). Suspending an account or resetting its password revokes its sessions immediately.

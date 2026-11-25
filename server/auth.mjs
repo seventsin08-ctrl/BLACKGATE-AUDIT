@@ -88,13 +88,19 @@ export async function recordLogin(userId, username, success, reason, ip, ua) {
 }
 const DUMMY = "scrypt$16384$8$1$AAAAAAAAAAAAAAAAAAAAAA==$" + Buffer.alloc(64).toString("base64");
 
-export async function attemptLogin({ username, password, otp }, ip, ua) {
+export async function attemptLogin({ username, password, otp, portal }, ip, ua) {
   username = String(username || "").trim().toLowerCase().slice(0, 100);
   if (!username || typeof password !== "string") throw new HttpError(400, "Username and password are required");
   await checkRateLimit(username, ip);
   const user = await one("SELECT * FROM users WHERE username=$1", [username]);
   const ok = await verifyPassword(password, user ? user.password_hash : DUMMY);
   if (!user || !ok) { await recordLogin(user?.id ?? null, username, false, "bad_credentials", ip, ua); throw new HttpError(401, "Invalid username or password"); }
+  // Separate sign-in portals: administrator and staff credentials only work on their own page.
+  if (portal === "admin" && user.role !== "superadmin" || portal === "staff" && user.role === "superadmin") {
+    await recordLogin(user.id, username, false, "wrong_portal", ip, ua);
+    throw new HttpError(401, "Invalid username or password");
+  }
+  if (user.status === "pending") { await recordLogin(user.id, username, false, "pending", ip, ua); throw new HttpError(403, "Your account is waiting for administrator approval."); }
   if (user.status !== "active") { await recordLogin(user.id, username, false, "suspended", ip, ua); throw new HttpError(403, "This account is suspended. Contact the administrator."); }
   if (user.totp_enabled) {
     if (!otp) return { needs_otp: true };

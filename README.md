@@ -13,9 +13,9 @@ Internal workforce operating system for BlackGate: staff workspace + Superadmin 
 ## Two interfaces
 | Path | Who | Notes |
 |---|---|---|
-| `/` | everyone | sign-in, forced password change, optional 2FA code |
+| `/` | staff | staff sign-in **and self-service account creation** (Create a staff account) |
 | `/app/` | staff | dashboard, tasks, notes, add post, clients, daily audit, earnings, platforms |
-| `/admin/` | Superadmin only | Control Center (16 sections). Enforced **server-side** on every `/api/admin/*` call |
+| `/admin/` | Superadmin only | **separate administrator sign-in** + Control Center (16 sections). Enforced **server-side** on every `/api/admin/*` call. Admin credentials do not work on `/`, staff credentials do not work on `/admin/` |
 
 ## Business rules (all enforced on the server, see `server/services.mjs`)
 * Commission = **verified initial payment × rate** (default 10%, editable in Settings; each commission keeps the rate it was created with).

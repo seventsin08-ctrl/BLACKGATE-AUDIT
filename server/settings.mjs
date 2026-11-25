@@ -1,6 +1,7 @@
 import { query } from "./db.mjs";
 
 export const DEFAULTS = {
+  signup_mode: "open", // open | approval | closed
   commission_percent: 10,
   daily_post_target: 5,
   working_days: [1, 2, 3, 4, 5, 6],

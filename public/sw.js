@@ -1,6 +1,6 @@
 // Offline shell only. API responses (financial data, receipts, sessions) are NEVER cached.
-const CACHE = "bg-shell-v1";
-const SHELL = ["/", "/app/", "/admin/", "/assets/css/app.css", "/assets/js/core.js", "/assets/js/login.js", "/assets/js/staff.js", "/assets/js/admin.js", "/assets/icons/icon.svg"];
+const CACHE = "bg-shell-v2";
+const SHELL = ["/", "/app/", "/admin/", "/assets/css/app.css", "/assets/js/core.js", "/assets/js/login.js", "/assets/js/auth-ui.js", "/assets/js/staff.js", "/assets/js/admin.js", "/assets/icons/icon.svg"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

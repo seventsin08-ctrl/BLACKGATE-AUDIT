@@ -2,6 +2,8 @@ import { query, one } from "../db.mjs";
 import { attemptLogin, sessionCookie, clearCookie, hashPassword, verifyPassword } from "../auth.mjs";
 import { passwordProblem, newTotpSecret, encrypt, decrypt, verifyTotp, newRecoveryCodes, sha256 } from "../security.mjs";
 import { bad, HttpError, str, phToday } from "../util.mjs";
+import { createSession } from "../auth.mjs";
+import { notifyMany } from "../services.mjs";
 import { ownFile } from "../files.mjs";
 import { logActivity } from "../services.mjs";
 import { getSettings } from "../settings.mjs";
@@ -19,6 +21,39 @@ export function registerAuth(r) {
     if (res.needs_otp) return { needs_otp: true };
     ctx.setCookie = sessionCookie(res.token, res.maxSec);
     return { user: publicUser(res.user), today: phToday() };
+  }, "public");
+
+  r.get("/api/auth/config", async () => ({ signup_mode: (await getSettings()).signup_mode }), "public");
+
+  // Staff self-registration (admin accounts can never be created here).
+  r.post("/api/auth/register", async (ctx) => {
+    const s = await getSettings();
+    if (s.signup_mode === "closed") throw new HttpError(403, "New account sign-ups are currently closed. Contact the administrator.");
+    const [n] = await query("SELECT count(*)::int c FROM login_events WHERE reason='signup' AND ip=$1 AND created_at > now() - interval '1 hour'", [ctx.ip]);
+    if (n.c >= 5) throw new HttpError(429, "Too many sign-ups from this network. Try again later.");
+    const b = ctx.body;
+    const full_name = str(b.full_name, { req: true, max: 120, name: "Full name" });
+    const username = str(b.username, { req: true, max: 40, name: "Username" }).toLowerCase();
+    if (!/^[a-z0-9._-]{3,40}$/.test(username)) throw bad("Username may use letters, numbers, dot, dash and underscore (3–40 characters)");
+    const problem = passwordProblem(b.password, username); if (problem) throw bad(problem);
+    if (b.password !== b.confirm) throw bad("Passwords do not match");
+    const status = s.signup_mode === "approval" ? "pending" : "active";
+    const exists = await one("SELECT 1 FROM users WHERE username=$1", [username]);
+    if (exists) throw new HttpError(409, "That username is already taken");
+    const row = await one(
+      `INSERT INTO users(username,full_name,role,position,password_hash,must_change_password,status,joined_at)
+       VALUES($1,$2,'staff',$3,$4,FALSE,$5,$6) RETURNING *`,
+      [username, full_name, str(b.position, { max: 120 }), await hashPassword(b.password), status, phToday()]);
+    await query("UPDATE users SET staff_code=$1 WHERE id=$2", ["BG-" + String(row.id).padStart(4, "0"), row.id]);
+    await query("INSERT INTO login_events(user_id,username,success,reason,ip,user_agent) VALUES($1,$2,TRUE,'signup',$3,$4)", [row.id, username, ctx.ip, ctx.ua.slice(0, 300)]);
+    const admins = await query("SELECT id FROM users WHERE role='superadmin'");
+    await notifyMany(admins.map((a) => a.id), "signup", status === "pending" ? "Sign-up awaiting approval" : "New staff sign-up", `${full_name} (@${username})`, "#/staff");
+    await logActivity({ user: row, ip: ctx.ip }, "staff.self_registered", "user", row.id, { username, status });
+    if (status === "pending") return { pending: true };
+    const { token, maxSec } = await createSession(row, ctx.ip, ctx.ua);
+    await query("UPDATE users SET last_login_at=now() WHERE id=$1", [row.id]);
+    ctx.setCookie = sessionCookie(token, maxSec);
+    return { user: publicUser({ ...row, staff_code: "BG-" + String(row.id).padStart(4, "0") }), pending: false };
   }, "public");
 
   r.post("/api/auth/logout", async (ctx) => {

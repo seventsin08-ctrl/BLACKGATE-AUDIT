@@ -26,6 +26,7 @@ export function registerAdmin(r) {
     const [c] = await query(
       `SELECT (SELECT count(*)::int FROM users WHERE role='staff' AND status='active') AS active_staff,
         (SELECT count(*)::int FROM users WHERE role='staff' AND status='suspended') AS suspended_staff,
+        (SELECT count(*)::int FROM users WHERE role='staff' AND status='pending') AS pending_signups,
         (SELECT count(*)::int FROM posts WHERE posted_on=$1 AND status IN ('pending','verified')) AS posts_today,
         (SELECT count(*)::int FROM posts WHERE status='pending') AS posts_pending,
         (SELECT count(*)::int FROM payments WHERE status='pending') AS payments_pending,
@@ -54,7 +55,7 @@ export function registerAdmin(r) {
          (SELECT count(*)::int FROM posts WHERE user_id=u.id AND status='verified') AS verified_posts,
          (SELECT count(*)::int FROM clients WHERE user_id=u.id) AS clients,
          (SELECT count(*)::int FROM tasks WHERE assigned_to=u.id AND status IN ('not_started','in_progress') AND deadline < now()) AS overdue_tasks
-       FROM users u WHERE u.role='staff' ORDER BY u.status, u.full_name`);
+       FROM users u WHERE u.role='staff' ORDER BY (u.status='pending') DESC, u.status, u.full_name`);
     return { staff: rows };
   }, A);
   r.post("/api/admin/staff", async (ctx) => {
@@ -90,6 +91,14 @@ export function registerAdmin(r) {
     await query("UPDATE users SET status='suspended' WHERE id=$1", [u.id]);
     await query("UPDATE sessions SET revoked=TRUE WHERE user_id=$1", [u.id]);
     await logActivity(ctx, "staff.suspended", "user", u.id, { username: u.username });
+    return { ok: true };
+  }, A);
+  r.post("/api/admin/staff/:id/approve", async (ctx) => {
+    const u = await staffUser(ctx.params.id);
+    if (u.status !== "pending") throw bad("This account is not waiting for approval");
+    await query("UPDATE users SET status='active' WHERE id=$1", [u.id]);
+    await notify(u.id, "welcome", "Your account was approved", "You can now use your workspace.", "#/dashboard");
+    await logActivity(ctx, "staff.approved", "user", u.id, { username: u.username });
     return { ok: true };
   }, A);
   r.post("/api/admin/staff/:id/reactivate", async (ctx) => {
@@ -515,6 +524,7 @@ export function registerAdmin(r) {
   r.put("/api/admin/settings", async (ctx) => {
     const b = ctx.body, changed = {};
     const num = (k, min, max, label) => { if (k in b) { const v = Number(b[k]); if (!Number.isFinite(v) || v < min || v > max) throw bad(`${label} must be between ${min} and ${max}`); changed[k] = v; } };
+    if ("signup_mode" in b) changed.signup_mode = oneOf(b.signup_mode, ["open", "approval", "closed"], "Sign-up mode");
     num("commission_percent", 0, 100, "Commission rate");
     num("daily_post_target", 0, 1000, "Daily post target");
     num("audit_reminder_hour", 0, 23, "Audit reminder hour");

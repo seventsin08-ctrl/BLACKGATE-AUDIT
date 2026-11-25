@@ -95,8 +95,8 @@ export async function api(method, path, body) {
   try { res = await fetch(path, opts); } catch { throw new ApiError("You appear to be offline. Check your connection and try again.", 0); }
   const ct = res.headers.get("content-type") || "";
   const data = ct.includes("json") ? await res.json().catch(() => ({})) : null;
-  if (res.status === 401 && !path.includes("/auth/login") && location.pathname !== "/") { location.href = "/?expired=1"; throw new ApiError("Session expired", 401); }
-  if (res.status === 403 && data?.code === "must_change_password" && location.pathname !== "/") { location.href = "/"; throw new ApiError("Password change required", 403); }
+  if (res.status === 401 && !path.includes("/auth/login") && !path.includes("/auth/register") && location.pathname !== "/") { location.href = location.pathname.startsWith("/admin") ? "/admin/?expired=1" : "/?expired=1"; throw new ApiError("Session expired", 401); }
+  if (res.status === 403 && data?.code === "must_change_password" && location.pathname !== "/") { location.href = location.pathname.startsWith("/admin") ? "/admin/" : "/"; throw new ApiError("Password change required", 403); }
   if (!res.ok) throw new ApiError(data?.error || "Something went wrong", res.status, data);
   return data ?? res;
 }
@@ -277,12 +277,17 @@ export function toggleTheme() {
 }
 
 // ---------- app shell + router ----------
-export async function startApp({ role, nav, mobile, routes, title }) {
+export async function startApp({ role, nav, mobile, routes, title, onLoggedOut }) {
   initTheme();
+  const loggedOut = (u) => (onLoggedOut ? onLoggedOut(u) : (location.href = role === "superadmin" ? "/admin/" : "/"));
   let me;
-  try { me = await api("GET", "/api/auth/me"); } catch { return; }
-  if (me.user.must_change_password) { location.href = "/"; return; }
-  if (me.user.role !== role) { location.href = me.user.role === "superadmin" ? "/admin/" : "/app/"; return; }
+  try {
+    const r = await fetch("/api/auth/me", { credentials: "same-origin", headers: { "x-requested-with": "bg" } });
+    if (!r.ok) return loggedOut(null);
+    me = await r.json();
+  } catch { return loggedOut(null); }
+  if (me.user.must_change_password) return loggedOut(me.user);
+  if (me.user.role !== role) { if (role === "staff") { location.href = "/admin/"; return; } return loggedOut(null); }
   const user = me.user, ctx = { user, today: me.today, settings: me.settings, refreshBadge: () => {} };
   const root = $("#root"); clear(root);
   let collapsed = false; try { collapsed = localStorage.getItem("bg-collapsed") === "1"; } catch {}
@@ -313,7 +318,7 @@ export async function startApp({ role, nav, mobile, routes, title }) {
       h("button", { class: "nav-item", style: { height: "46px" }, onclick: () => { m.close(); toggleTheme(); } }, icon("moon"), h("span", {}, "Switch theme")),
       h("button", { class: "nav-item", style: { height: "46px" }, onclick: () => logout() }, icon("out"), h("span", {}, "Sign out"))) });
   }
-  async function logout() { try { await POST("/api/auth/logout"); } catch {} location.href = "/"; }
+  async function logout() { try { await POST("/api/auth/logout"); } catch {} location.href = role === "superadmin" ? "/admin/" : "/"; }
   const top = h("header", { class: "top" },
     h("button", { class: "icon-btn desk", "aria-label": "Collapse sidebar", onclick: () => { shell.classList.toggle("collapsed"); try { localStorage.setItem("bg-collapsed", shell.classList.contains("collapsed") ? "1" : "0"); } catch {} setTimeout(moveInd, 280); } }, icon("menu")),
     heading, h("div", { class: "grow" }), clock, themeBtn,
