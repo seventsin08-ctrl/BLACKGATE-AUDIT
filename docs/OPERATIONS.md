@@ -15,7 +15,7 @@
 ## Account recovery
 * **Staff forgot password / lost 2FA:** Superadmin → Staff Management → *Reset password* (new temporary password, 2FA cleared, sessions revoked).
 * **Superadmin lost 2FA device:** use one of the one-time recovery codes shown when 2FA was enabled.
-* **Superadmin lost password and codes:** requires access to the Netlify account (the site owner). Set `ADMIN_INITIAL_PASSWORD` to a new temporary value and set `ADMIN_RECOVERY_RESET` to any **new** random string, then redeploy/trigger the next request. The Superadmin password is reset to that value, 2FA is cleared, all sessions revoked, a change is forced at next login and the event is logged. Remove `ADMIN_RECOVERY_RESET` afterwards. Re-using an old value does nothing.
+* **Superadmin lost password and codes:** requires access to the Netlify account (the site owner). Set `ADMIN_INITIAL_PASSWORD` to a new temporary value and set `ADMIN_RECOVERY_RESET` to any **new** random string, then redeploy/trigger the next request. The Superadmin password is reset to that value, the Superadmin username is set to `ADMIN_INITIAL_USERNAME` (unless another account already uses it), 2FA is cleared, all sessions revoked, a change is forced at next login and the event is logged. Remove `ADMIN_RECOVERY_RESET` afterwards. Re-using an old value does nothing.
 
 ## Backups
 * Automatic: daily at 02:00 Philippine time (scheduled function), last 30 kept, stored privately in Netlify Blobs (`backups`).

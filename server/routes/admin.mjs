@@ -1,5 +1,5 @@
 import { query, one, tx } from "../db.mjs";
-import { bad, forbidden, notFound, str, oneOf, int, cents, fromCents, dateStr, tsStr, checklist, phToday, addDays, randomPassword, randomToken, json } from "../util.mjs";
+import { isReservedUsername, bad, forbidden, notFound, str, oneOf, int, cents, fromCents, dateStr, tsStr, checklist, phToday, addDays, randomPassword, randomToken, json } from "../util.mjs";
 import { hashPassword, passwordProblem } from "../security.mjs";
 import { notify, notifyMany, logActivity, recomputeCommission, spawnNextRecurrence, TASK_EFF } from "../services.mjs";
 import { getSettings, setSetting, DEFAULTS } from "../settings.mjs";
@@ -62,6 +62,7 @@ export function registerAdmin(r) {
     const b = ctx.body;
     const username = str(b.username, { req: true, max: 40, name: "Username" }).toLowerCase();
     if (!/^[a-z0-9._-]{3,40}$/.test(username)) throw bad("Username may use letters, numbers, dot, dash and underscore (3–40 characters)");
+    if (isReservedUsername(username)) throw bad("That username is reserved");
     const temp = b.password ? str(b.password, { max: 200 }) : randomPassword();
     if (b.password) { const prob = passwordProblem(temp, username); if (prob) throw bad(prob); }
     const row = await one(

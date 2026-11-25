@@ -26,6 +26,12 @@ export async function bootstrap() {
       await query(
         "UPDATE users SET password_hash=$1, must_change_password=TRUE, totp_enabled=FALSE, totp_secret_enc=NULL, recovery_codes='[]', status='active' WHERE id=$2",
         [await hashPassword(pw), admin.id]);
+      // The reset also applies the configured Superadmin username (skipped if another account already uses it).
+      if (uname !== admin.username && /^[a-z0-9._-]{3,40}$/.test(uname)) {
+        const taken = await one("SELECT 1 FROM users WHERE username=$1 AND id<>$2", [uname, admin.id]);
+        if (!taken) await query("UPDATE users SET username=$1 WHERE id=$2", [uname, admin.id]);
+        else await logActivity(null, "superadmin.rename_skipped", "user", admin.id, { reason: "username in use" });
+      }
       await query("UPDATE sessions SET revoked=TRUE WHERE user_id=$1", [admin.id]);
       await query(`INSERT INTO settings(key,value) VALUES('recovery_reset_done',$1::jsonb) ON CONFLICT(key) DO UPDATE SET value=EXCLUDED.value`, [JSON.stringify(sha256(token))]);
       await logActivity(null, "superadmin.recovery_reset", "user", admin.id);

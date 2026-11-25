@@ -101,3 +101,7 @@ export function toCsv(rows, columns) {
 }
 export const phToday = () => new Date(Date.now() + 8 * 3600e3).toISOString().slice(0, 10);
 export const addDays = (d, n) => { const x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
+
+const RESERVED = ["admin", "superadmin", "administrator", "root", "blackgate", "system"];
+/** Usernames staff can never take (administrator names, including the configured one). */
+export const isReservedUsername = (u) => RESERVED.includes(u) || u === String(process.env.ADMIN_INITIAL_USERNAME || "").toLowerCase();

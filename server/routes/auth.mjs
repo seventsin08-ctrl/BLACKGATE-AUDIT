@@ -1,7 +1,7 @@
 import { query, one } from "../db.mjs";
 import { attemptLogin, sessionCookie, clearCookie, hashPassword, verifyPassword } from "../auth.mjs";
 import { passwordProblem, newTotpSecret, encrypt, decrypt, verifyTotp, newRecoveryCodes, sha256 } from "../security.mjs";
-import { bad, HttpError, str, phToday } from "../util.mjs";
+import { bad, HttpError, str, phToday, isReservedUsername } from "../util.mjs";
 import { createSession } from "../auth.mjs";
 import { notifyMany } from "../services.mjs";
 import { ownFile } from "../files.mjs";
@@ -38,7 +38,7 @@ export function registerAuth(r) {
     const problem = passwordProblem(b.password, username); if (problem) throw bad(problem);
     if (b.password !== b.confirm) throw bad("Passwords do not match");
     const status = s.signup_mode === "approval" ? "pending" : "active";
-    const exists = await one("SELECT 1 FROM users WHERE username=$1", [username]);
+    const exists = isReservedUsername(username) || await one("SELECT 1 FROM users WHERE username=$1", [username]);
     if (exists) throw new HttpError(409, "That username is already taken");
     const row = await one(
       `INSERT INTO users(username,full_name,role,position,password_hash,must_change_password,status,joined_at)

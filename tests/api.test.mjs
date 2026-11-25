@@ -362,3 +362,14 @@ test("recovery reset via documented env procedure", async () => {
   ok(l); assert.equal(l.data.user.must_change_password, true);
   delete process.env.ADMIN_RECOVERY_RESET;
 });
+
+test("recovery reset can rename the Superadmin to the configured username; reserved names stay unavailable", async () => {
+  process.env.ADMIN_RECOVERY_RESET = "reset-2"; process.env.ADMIN_INITIAL_PASSWORD = "Rename-Temp-7"; process.env.ADMIN_INITIAL_USERNAME = "superadmin";
+  const { bootstrap } = await import("../server/auth.mjs"); await bootstrap();
+  const c = client("13.0.0.1");
+  assert.equal((await c.post("/api/auth/login", { username: "admin", password: "Rename-Temp-7", portal: "admin" })).status, 401, "old username no longer works");
+  const l = await c.post("/api/auth/login", { username: "superadmin", password: "Rename-Temp-7", portal: "admin" });
+  ok(l); assert.equal(l.data.user.username, "superadmin"); assert.equal(l.data.user.must_change_password, true);
+  for (const name of ["admin", "superadmin", "Administrator"]) assert.equal((await client("13.0.0.2").post("/api/auth/register", { full_name: "Fake Admin", username: name, password: "Strong-Pass-2026", confirm: "Strong-Pass-2026" })).status, 409, name + " reserved");
+  delete process.env.ADMIN_RECOVERY_RESET; delete process.env.ADMIN_INITIAL_USERNAME;
+});
