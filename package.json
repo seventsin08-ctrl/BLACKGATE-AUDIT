@@ -1,0 +1,20 @@
+{
+  "name": "blackgate-audit",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "BlackGate Audit - internal workforce operating system",
+  "scripts": {
+    "test": "node --test tests/api.test.mjs",
+    "dev": "netlify dev"
+  },
+  "dependencies": {
+    "@netlify/blobs": "^10.0.0",
+    "@netlify/database": "^2.0.4",
+    "@netlify/functions": "^5.0.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@netlify/database-dev": "latest"
+  }
+}

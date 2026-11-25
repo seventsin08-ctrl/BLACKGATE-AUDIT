@@ -1,0 +1,10 @@
+node_modules/
+.env
+.env.*
+!.env.example
+.netlify/
+*.log
+backups/
+*.bak
+.DS_Store
+coverage/
