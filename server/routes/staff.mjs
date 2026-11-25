@@ -449,13 +449,14 @@ export function registerStaff(r) {
   };
   r.get("/api/me/audits", async (ctx) => ({ audits: await query("SELECT id,audit_date,status,revision,submitted_at,reviewed_at,review_note FROM audits WHERE user_id=$1 ORDER BY audit_date DESC LIMIT 120", [ctx.user.id]) }), S);
   r.get("/api/me/audits/prefill", async (ctx) => {
-    const date = auditDate(ctx.query.date);
-    const audit = await one("SELECT * FROM audits WHERE user_id=$1 AND audit_date=$2", [ctx.user.id, date]);
-    const editable = !audit || ["draft", "correction_requested"].includes(audit.status);
+    const raw = ctx.query.date ? dateStr(ctx.query.date, "Audit date") : phToday();
+    const audit = await one("SELECT * FROM audits WHERE user_id=$1 AND audit_date=$2", [ctx.user.id, raw]);
+    const date = audit ? raw : auditDate(raw); // existing audits can always be viewed
+    const editable = (!audit || ["draft", "correction_requested"].includes(audit.status)) && date >= addDays(phToday(), -7);
     const live = await auditSnapshot(ctx.user.id, date);
     return { date, now: new Date().toISOString(), staff: { name: ctx.user.full_name, staff_code: ctx.user.staff_code },
       audit: audit ? { id: audit.id, status: audit.status, revision: audit.revision, review_note: audit.review_note, submitted_at: audit.submitted_at } : null,
-      editable, snapshot: editable ? live : audit.snapshot, manual: audit?.manual || cleanManual({}) };
+      editable, snapshot: editable || !audit.snapshot ? live : audit.snapshot, manual: audit?.manual || cleanManual({}) };
   }, S);
   async function saveAudit(ctx, submit) {
     const date = auditDate(ctx.params.date), uid = ctx.user.id;
