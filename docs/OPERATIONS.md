@@ -36,3 +36,8 @@ Push to GitHub / deploy. Migrations in `netlify/database/migrations/` apply auto
 
 ## Environment variables apply per deploy
 Netlify freezes environment variables into each deploy. After adding or changing `APP_SECRET`, `ADMIN_INITIAL_PASSWORD` or `ADMIN_INITIAL_USERNAME`, trigger a new deploy (Deploys → Trigger deploy) or push a commit. Make sure the variables are set on the **same** Netlify site that serves the app. If the sign-in page says "Setup required", a variable is missing on that site or the site has not been redeployed since it was added.
+
+## Sign-in portals at a glance
+* Administrator: `/admin/` (username from `ADMIN_INITIAL_USERNAME`, default `admin`).
+* Staff: `/` (self-registered or created by the administrator).
+If sign-in says "Invalid username or password", check you are on the correct page for that account, and that the latest deploy finished after any environment-variable change.
